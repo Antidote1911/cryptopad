@@ -27,9 +27,11 @@ botan_generate(cryptopad_botan
     argon2
     chacha
     chacha20poly1305
+    gcm
     hmac
     serpent
     sha2_32
+    siv
     system_rng
     rng
 )
