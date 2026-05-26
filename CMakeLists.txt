@@ -99,6 +99,12 @@ if(UNIX AND NOT APPLE)
             COMPONENT cryptopad)
 endif()
 
+if(WIN32 AND NOT BOTAN_USE_SYSTEM)
+    install(TARGETS cryptopad_botan
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            COMPONENT cryptopad)
+endif()
+
 # ── Tests ────────────────────────────────────────────────────────────────────
 enable_testing()
 find_package(Qt6 REQUIRED COMPONENTS Test)
