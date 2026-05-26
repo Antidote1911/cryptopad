@@ -63,11 +63,14 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           export OUTPUT="cryptopad-${VERSION}-linux-x86_64.AppImage"
           export QMAKE="${QT_ROOT_DIR}/bin/qmake"
-          # Nécessaire pour que ldd (utilisé par linuxdeploy) trouve les .so Qt
-          # installés dans un chemin non-standard par jurplel/install-qt-action.
-          export LD_LIBRARY_PATH="${QT_ROOT_DIR}/lib:${LD_LIBRARY_PATH}"
+          # linuxdeploy (AppImage) écrase LD_LIBRARY_PATH au lancement, ce qui
+          # empêche ldd de résoudre les .so Qt non-système. On passe le chemin
+          # explicitement via --library-search-path pour que le plugin qt détecte
+          # les modules Qt liés au binaire.
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
+            --executable AppDir/usr/bin/cryptopad \
+            --library-search-path "${QT_ROOT_DIR}/lib" \
             --plugin qt \
             --output appimage
 
