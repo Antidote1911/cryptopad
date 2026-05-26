@@ -12,58 +12,25 @@ if(WIN32)
     set(CMAKE_INSTALL_BINDIR ".")
 endif()
 
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
 
 # ── Botan-3 detection ────────────────────────────────────────────────────────
-# Priority: (1) pkg-config  (2) build from source
-find_package(PkgConfig QUIET)
+# Priority: (1) system Botan via CMake config  (2) amalgamation from source
+find_package(Botan 3 REQUIRED)
 
-if(PKG_CONFIG_FOUND)
-    pkg_check_modules(BOTAN QUIET botan-3)
-endif()
-
-if(BOTAN_FOUND)
-    message(STATUS "Found system Botan-3 ${BOTAN_VERSION}")
-    add_library(Botan::Botan INTERFACE IMPORTED)
-    target_include_directories(Botan::Botan INTERFACE ${BOTAN_INCLUDE_DIRS})
-    target_link_libraries(Botan::Botan INTERFACE ${BOTAN_LIBRARIES})
-    target_compile_options(Botan::Botan INTERFACE ${BOTAN_CFLAGS_OTHER})
-else()
-    # Build Botan-3 from source using its own configure.py + make.
-    # Requires Python 3 and a C++ compiler visible to the configure script.
-    message(STATUS "Botan-3 not found on system — downloading and building from source")
-    include(ExternalProject)
-
-    set(BOTAN_INSTALL_DIR "${CMAKE_BINARY_DIR}/botan-install")
-
-    ExternalProject_Add(botan_external
-        URL      https://botan.randombit.net/releases/Botan-3.4.0.tar.xz
-        # SHA256 intentionally omitted — verify manually for production builds.
-        CONFIGURE_COMMAND
-            python3 <SOURCE_DIR>/configure.py
-                --prefix=${BOTAN_INSTALL_DIR}
-                --minimized-build
-                --enable-modules=serpent,gcm,aead,kdf,pbkdf,pbkdf2,sha2_32,sha2_64,hmac,auto_rng,system_rng,argon2,threefish_512,eax,siv,chacha20poly1305
-        BUILD_COMMAND     make -j4
-        INSTALL_COMMAND   make install
-        BUILD_IN_SOURCE   0
-        LOG_CONFIGURE ON
-        LOG_BUILD     ON
-        LOG_INSTALL   ON
-    )
-
-    set(BOTAN_INCLUDE_DIRS "${BOTAN_INSTALL_DIR}/include/botan-3")
-    set(BOTAN_LIBRARY     "${BOTAN_INSTALL_DIR}/lib/libbotan-3.a")
-
-    file(MAKE_DIRECTORY "${BOTAN_INCLUDE_DIRS}")
-
-    add_library(Botan::Botan STATIC IMPORTED GLOBAL)
-    set_target_properties(Botan::Botan PROPERTIES
-        IMPORTED_LOCATION             "${BOTAN_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${BOTAN_INCLUDE_DIRS}"
-    )
-    add_dependencies(Botan::Botan botan_external)
-endif()
+botan_generate(cryptopad_botan
+    aead
+    auto_rng
+    argon2
+    chacha
+    chacha20poly1305
+    hmac
+    sha2_32
+    system_rng
+    rng
+)
 
 # ── Application sources ──────────────────────────────────────────────────────
 add_executable(cryptopad
@@ -98,7 +65,7 @@ target_link_libraries(cryptopad PRIVATE
     Qt6::Gui
     Qt6::Widgets
     Qt6::Concurrent
-    Botan::Botan
+    cryptopad_botan
 )
 
 target_compile_options(cryptopad PRIVATE -Wall -Wextra -Wpedantic)
@@ -144,7 +111,7 @@ target_include_directories(test_cryptomanager PRIVATE src)
 target_link_libraries(test_cryptomanager PRIVATE
     Qt6::Core
     Qt6::Test
-    Botan::Botan
+    cryptopad_botan
 )
 target_compile_options(test_cryptomanager PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME CryptoManager COMMAND test_cryptomanager)
@@ -157,7 +124,7 @@ target_include_directories(test_fileencryptor PRIVATE src)
 target_link_libraries(test_fileencryptor PRIVATE
     Qt6::Core
     Qt6::Test
-    Botan::Botan
+    cryptopad_botan
 )
 target_compile_options(test_fileencryptor PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME FileEncryptor COMMAND test_fileencryptor)
