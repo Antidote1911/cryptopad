@@ -22,11 +22,13 @@ find_package(Botan 3 REQUIRED)
 
 botan_generate(cryptopad_botan
     aead
+    aes
     auto_rng
     argon2
     chacha
     chacha20poly1305
     hmac
+    serpent
     sha2_32
     system_rng
     rng
