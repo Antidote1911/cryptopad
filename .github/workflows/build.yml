@@ -63,6 +63,9 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           export OUTPUT="cryptopad-${VERSION}-linux-x86_64.AppImage"
           export QMAKE="${QT_ROOT_DIR}/bin/qmake"
+          # Nécessaire pour que ldd (utilisé par linuxdeploy) trouve les .so Qt
+          # installés dans un chemin non-standard par jurplel/install-qt-action.
+          export LD_LIBRARY_PATH="${QT_ROOT_DIR}/lib:${LD_LIBRARY_PATH}"
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --plugin qt \
@@ -180,6 +183,11 @@ jobs:
         run: |
           $dest = "$env:GITHUB_WORKSPACE\deploy"
           cmake --install build --prefix $dest --component cryptopad --config Release
+          # cmake --install peut ne pas placer cryptopad.exe (MACOSX_BUNDLE sur Windows) :
+          # on le copie directement depuis la sortie de build si absent.
+          if (-not (Test-Path "$dest\cryptopad.exe")) {
+              Copy-Item "build\Release\cryptopad.exe" "$dest\"
+          }
           # Deploy Qt DLLs
           windeployqt.exe --release --no-translations --no-system-d3d-compiler `
             --no-opengl-sw --no-network "$dest\cryptopad.exe"
