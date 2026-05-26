@@ -47,13 +47,15 @@ add_executable(cryptopad
 )
 
 # macOS: build as .app bundle
-set_target_properties(cryptopad PROPERTIES
-    MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_BUNDLE_NAME        "CryptoPad"
-    MACOSX_BUNDLE_BUNDLE_VERSION     "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_GUI_IDENTIFIER     "io.github.antidote1911.cryptopad"
-)
+if(APPLE)
+    set_target_properties(cryptopad PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME        "CryptoPad"
+        MACOSX_BUNDLE_BUNDLE_VERSION     "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER     "io.github.antidote1911.cryptopad"
+    )
+endif()
 
 # Windows: embed icon via resource file
 if(WIN32 AND EXISTS "${CMAKE_SOURCE_DIR}/share/windows/cryptopad.ico")
