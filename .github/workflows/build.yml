@@ -1,0 +1,265 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop]
+    tags:
+      - 'v[0-9]+.*'
+
+permissions:
+  contents: write
+
+# ── Linux ─────────────────────────────────────────────────────────────────────
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            libbotan-3-dev \
+            libgl1-mesa-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+            libxcb-randr0-dev libxcb-render-util0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-xinerama0-dev libxcb-xinput-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          setup-python: false
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Prepare AppDir
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cmake --install build --prefix AppDir/usr --component cryptopad
+          cp AppDir/usr/share/icons/hicolor/256x256/apps/cryptopad.png AppDir/cryptopad.png
+          cp AppDir/usr/share/applications/cryptopad.desktop AppDir/cryptopad.desktop
+
+      - name: Download linuxdeploy and Qt plugin
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage
+
+      - name: Create AppImage
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          export OUTPUT="cryptopad-${VERSION}-linux-x86_64.AppImage"
+          export QMAKE="${QT_ROOT_DIR}/bin/qmake"
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --output appimage
+
+      - name: Upload artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: cryptopad-*-linux-x86_64.AppImage
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools and Botan
+        run: |
+          brew install cmake ninja botan
+          # Expose Botan to pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix botan)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          host: mac
+          target: desktop
+
+      - name: Build (native – branch only)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+
+      - name: Build arm64
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cmake -S . -B build-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=arm64
+          cmake --build build-arm64 --parallel
+
+      - name: Build x86_64
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cmake -S . -B build-x86_64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64
+          cmake --build build-x86_64 --parallel
+
+      - name: Assemble universal .app bundle
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          cp -R build-arm64/cryptopad.app build-universal.app
+          while IFS= read -r -d '' bin; do
+            rel="${bin#build-arm64/cryptopad.app/}"
+            x86="build-x86_64/cryptopad.app/${rel}"
+            if [ -f "$x86" ]; then
+              lipo -create -output "$bin" "$bin" "$x86" 2>/dev/null || true
+            fi
+          done < <(find build-universal.app -type f -print0)
+
+      - name: Deploy Qt frameworks
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          "${QT_ROOT_DIR}/bin/macdeployqt" build-universal.app -verbose=1
+
+      - name: Create DMG
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp -R build-universal.app "CryptoPad.app"
+          hdiutil create \
+            -volname "CryptoPad ${VERSION}" \
+            -srcfolder "CryptoPad.app" \
+            -ov -format UDZO \
+            "cryptopad-${VERSION}-universal-macos.dmg"
+
+      - name: Upload artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: cryptopad-*-universal-macos.dmg
+
+# ── Windows ───────────────────────────────────────────────────────────────────
+  windows:
+    runs-on: windows-latest
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache variables for vcpkg
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Install Botan (vcpkg)
+        run: vcpkg install botan:x64-windows
+
+      - name: Install pkg-config
+        run: choco install pkgconfiglite -y --no-progress
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          setup-python: false
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $env:PKG_CONFIG_PATH = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\pkgconfig"
+          cmake -S . -B build -G "Ninja Multi-Config"
+          cmake --build build --config Release
+
+      - name: Install and deploy
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $dest = "$env:GITHUB_WORKSPACE\deploy"
+          cmake --install build --prefix $dest --component cryptopad --config Release
+          # Deploy Qt DLLs
+          windeployqt.exe --release --no-translations --no-system-d3d-compiler `
+            --no-opengl-sw --no-network "$dest\cryptopad.exe"
+          # Copy Botan DLL
+          $botandll = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\botan-3.dll"
+          if (Test-Path $botandll) { Copy-Item $botandll "$dest\" }
+          # Remove unused Qt plugin directories
+          @("generic","networkinformation","tls","iconengines") | ForEach-Object {
+              Remove-Item -Recurse -Force "$dest\$_" -ErrorAction SilentlyContinue
+          }
+          Copy-Item README.md "$dest\"
+
+      - name: Create portable ZIP
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          Compress-Archive -Path "deploy\*" `
+            -DestinationPath "cryptopad-${VERSION}-windows-portable.zip"
+
+      - name: Install NSIS
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: choco install nsis -y --no-progress
+
+      - name: Build NSIS installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
+          & "C:\Program Files (x86)\NSIS\makensis.exe" `
+            /DAPPVERSION=$VERSION `
+            /DSRCDIR=$env:GITHUB_WORKSPACE\deploy `
+            share\windows\installer.nsi
+          Move-Item "share\windows\cryptopad-${VERSION}-windows-setup.exe" "."
+
+      - name: Upload artifact
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            cryptopad-*-windows-portable.zip
+            cryptopad-*-windows-setup.exe
+
+# ── Publish release (tag only, all builds must succeed) ───────────────────────
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: [linux, macos, windows]
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cryptopad-*-linux-x86_64.AppImage
+            cryptopad-*-universal-macos.dmg
+            cryptopad-*-windows-portable.zip
+            cryptopad-*-windows-setup.exe

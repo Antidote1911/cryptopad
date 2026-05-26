@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Name=CryptoPad
+GenericName=Encrypted Text Editor
+Exec=cryptopad
+Comment=Rich-text editor with triple-layer file encryption
+Terminal=false
+Type=Application
+Categories=Utility;TextEditor;Security;
+Icon=cryptopad

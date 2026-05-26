@@ -1,0 +1,35 @@
+# Maintainer: Fabrice Corraire <antidote1911@gmail.com>
+
+pkgname=cryptopad-git
+pkgver=r1.0000000
+pkgrel=1
+pkgdesc="Rich-text editor with triple-layer file encryption (git master)"
+arch=('x86_64')
+url="https://github.com/Antidote1911/cryptopad"
+license=('GPL3')
+provides=('cryptopad')
+conflicts=('cryptopad' 'cryptopad-appimage')
+depends=('qt6-base' 'botan')
+makedepends=('cmake' 'ninja' 'git')
+source=("${pkgname}::git+https://github.com/Antidote1911/cryptopad.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "${pkgname}"
+    git describe --long --tags 2>/dev/null \
+        | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' \
+        || printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+    cd "${pkgname}"
+    cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    cmake --build build --parallel
+}
+
+package() {
+    cd "${pkgname}"
+    DESTDIR="${pkgdir}" cmake --install build --component cryptopad
+}
