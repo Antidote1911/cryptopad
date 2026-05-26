@@ -40,7 +40,9 @@ jobs:
 
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_RPATH="${QT_ROOT_DIR}/lib"
           cmake --build build --parallel
 
       - name: Prepare AppDir
@@ -63,14 +65,9 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           export OUTPUT="cryptopad-${VERSION}-linux-x86_64.AppImage"
           export QMAKE="${QT_ROOT_DIR}/bin/qmake"
-          # linuxdeploy (AppImage) écrase LD_LIBRARY_PATH au lancement, ce qui
-          # empêche ldd de résoudre les .so Qt non-système. On passe le chemin
-          # explicitement via --library-search-path pour que le plugin qt détecte
-          # les modules Qt liés au binaire.
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --executable AppDir/usr/bin/cryptopad \
-            --library-search-path "${QT_ROOT_DIR}/lib" \
             --plugin qt \
             --output appimage
 
@@ -141,9 +138,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cp -R build-universal.app "CryptoPad.app"
+          mkdir dmg_staging
+          cp -R "CryptoPad.app" dmg_staging/
           hdiutil create \
             -volname "CryptoPad ${VERSION}" \
-            -srcfolder "CryptoPad.app" \
+            -srcfolder dmg_staging \
             -ov -format UDZO \
             "cryptopad-${VERSION}-universal-macos.dmg"
 
