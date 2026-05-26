@@ -68,7 +68,9 @@ target_link_libraries(cryptopad PRIVATE
     cryptopad_botan
 )
 
-target_compile_options(cryptopad PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(cryptopad PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>
+)
 target_compile_definitions(cryptopad PRIVATE APP_VERSION="${PROJECT_VERSION}")
 
 # ── Arch Linux PKGBUILDs (version injectée depuis PROJECT_VERSION) ────────────
@@ -119,7 +121,9 @@ target_link_libraries(test_cryptomanager PRIVATE
     Qt6::Test
     cryptopad_botan
 )
-target_compile_options(test_cryptomanager PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(test_cryptomanager PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>
+)
 add_test(NAME CryptoManager COMMAND test_cryptomanager)
 
 add_executable(test_fileencryptor
@@ -132,5 +136,7 @@ target_link_libraries(test_fileencryptor PRIVATE
     Qt6::Test
     cryptopad_botan
 )
-target_compile_options(test_fileencryptor PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(test_fileencryptor PRIVATE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic>
+)
 add_test(NAME FileEncryptor COMMAND test_fileencryptor)
