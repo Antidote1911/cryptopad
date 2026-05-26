@@ -151,7 +151,10 @@ function(botan_generate TARGET_NAME MODULES)
         target_include_directories(${TARGET_NAME} INTERFACE "${CMAKE_CURRENT_BINARY_DIR}")
         target_link_libraries(${TARGET_NAME} PRIVATE
             $<$<NOT:$<BOOL:${MSVC}>>:pthread>)
-        set_target_properties(${TARGET_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        set_target_properties(${TARGET_NAME} PROPERTIES
+            POSITION_INDEPENDENT_CODE ON
+            WINDOWS_EXPORT_ALL_SYMBOLS ON
+        )
 
     endif()
 endfunction()
