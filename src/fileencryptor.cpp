@@ -1,12 +1,6 @@
 #include "fileencryptor.h"
 
-#include <botan/auto_rng.h>
-#include <botan/pwdhash.h>
-#include <botan/aead.h>
-#include <botan/mac.h>
-#include <botan/mem_ops.h>
-#include <botan/exceptn.h>
-#include <botan/secmem.h>
+#include "botan_all.h"
 
 #include <QFile>
 #include <QThread>

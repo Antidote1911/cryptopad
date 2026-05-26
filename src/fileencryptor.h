@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <vector>
-#include <botan/secmem.h>
+#include "botan_all.h"
 
 // Chiffrement/déchiffrement de fichiers arbitraires — format CPDF identique à Arsenic.
 //

@@ -1,7 +1,7 @@
 #pragma once
 #include <QByteArray>
 #include <QString>
-#include <botan/secmem.h>
+#include "botan_all.h"
 #include <cstdint>
 #include <vector>
 
