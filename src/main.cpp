@@ -8,6 +8,8 @@ int main(int argc, char* argv[])
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("CryptoPad");
 
+    app.setStyle("Fusion");
+
     // Dark palette
     QPalette dark;
     dark.setColor(QPalette::Window,          QColor(0x2B, 0x2B, 0x2B));
