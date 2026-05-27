@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoPad — Analyse du format de chiffrement</title>
+<style>
+  :root {
+    --bg:        #1e1e1e;
+    --bg2:       #252526;
+    --bg3:       #2d2d2d;
+    --border:    #3c3c3c;
+    --text:      #d4d4d4;
+    --muted:     #858585;
+    --accent:    #569cd6;
+    --accent2:   #4ec9b0;
+    --accent3:   #ce9178;
+    --accent4:   #dcdcaa;
+    --green:     #6a9955;
+    --red:       #f44747;
+    --yellow:    #ffcc02;
+    --purple:    #c586c0;
+    --tag-bg:    #264f78;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  a { color: var(--accent); text-decoration: none; }
+
+  /* ── Layout ── */
+  .page { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* ── Header ── */
+  .hero {
+    background: linear-gradient(135deg, #1a2533 0%, #1e1e1e 60%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 24px 40px;
+    text-align: center;
+  }
+  .hero h1 { font-size: 2rem; color: #fff; letter-spacing: -0.5px; }
+  .hero h1 span { color: var(--accent); }
+  .hero .sub { color: var(--muted); margin-top: 8px; font-size: 0.95rem; }
+  .hero .badges { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .badge {
+    background: var(--tag-bg);
+    color: #9cdcfe;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+  }
+  .badge.green  { background: #1e3a1e; color: var(--accent2); }
+  .badge.orange { background: #3a2a1e; color: var(--accent3); }
+  .badge.yellow { background: #332d00; color: var(--yellow); }
+
+  /* ── TOC ── */
+  .toc {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    margin: 32px 0;
+  }
+  .toc h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 4px 0; }
+  .toc a { color: var(--text); }
+  .toc a:hover { color: var(--accent); }
+
+  /* ── Sections ── */
+  section { margin-top: 48px; }
+  h2.section-title {
+    font-size: 1.25rem;
+    color: #fff;
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    margin-bottom: 20px;
+  }
+  h3.sub-title {
+    font-size: 1rem;
+    color: var(--accent2);
+    margin: 24px 0 10px;
+  }
+  p { margin-bottom: 10px; color: var(--text); }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ── Memory map / binary layout ── */
+  .memmap {
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+  }
+  .memmap th {
+    background: var(--bg3);
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 7px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .memmap td {
+    padding: 6px 12px;
+    border-bottom: 1px solid #2a2a2a;
+    vertical-align: top;
+  }
+  .memmap tr:hover td { background: #262626; }
+  .off  { color: var(--muted); font-size: 0.78rem; }
+  .sz   { color: var(--accent3); font-weight: 600; }
+  .field-name { color: var(--accent4); font-weight: 600; }
+  .field-desc { color: var(--text); font-size: 0.82rem; }
+  .sep td {
+    background: #23283a !important;
+    color: var(--accent);
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-bottom: 1px solid #3a4060;
+    border-top: 1px solid #3a4060;
+  }
+
+  /* ── Pipeline diagram ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin: 20px 0;
+    font-family: 'Consolas', monospace;
+    font-size: 0.82rem;
+  }
+  .pipe-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 14px;
+    text-align: center;
+    min-width: 130px;
+  }
+  .pipe-box .name { font-weight: 700; color: #fff; }
+  .pipe-box .detail { color: var(--muted); font-size: 0.75rem; margin-top: 3px; }
+  .pipe-box.layer1 { border-color: #569cd6; }
+  .pipe-box.layer1 .name { color: #569cd6; }
+  .pipe-box.layer2 { border-color: #4ec9b0; }
+  .pipe-box.layer2 .name { color: #4ec9b0; }
+  .pipe-box.layer3 { border-color: #ce9178; }
+  .pipe-box.layer3 .name { color: #ce9178; }
+  .pipe-box.kdf    { border-color: #c586c0; }
+  .pipe-box.kdf    .name { color: #c586c0; }
+  .pipe-box.mac    { border-color: #dcdcaa; }
+  .pipe-box.mac    .name { color: #dcdcaa; }
+  .pipe-box.wrap   { border-color: #6a9955; }
+  .pipe-box.wrap   .name { color: #6a9955; }
+  .pipe-box.plain  { border-color: var(--muted); }
+  .pipe-box.plain  .name { color: var(--text); }
+  .arrow {
+    color: var(--muted);
+    font-size: 1.2rem;
+    padding: 0 6px;
+    user-select: none;
+  }
+
+  /* ── Key layout ── */
+  .key-strip {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin: 14px 0;
+    font-family: 'Consolas', monospace;
+    font-size: 0.8rem;
+  }
+  .key-seg {
+    border-radius: 3px;
+    padding: 6px 10px;
+    text-align: center;
+    font-weight: 600;
+  }
+  .ks-k1 { background: #1a2d3a; border: 1px solid #569cd6; color: #569cd6; flex: 4; }
+  .ks-k2 { background: #1a3030; border: 1px solid #4ec9b0; color: #4ec9b0; flex: 2; }
+  .ks-k3 { background: #3a2a1e; border: 1px solid #ce9178; color: #ce9178; flex: 2; }
+  .ks-k4 { background: #332d00; border: 1px solid #dcdcaa; color: #dcdcaa; flex: 2; }
+  .ks-sz { background: #2a1e3a; border: 1px solid #c586c0; color: #c586c0; flex: 1; }
+  .ks-label { font-size: 0.7rem; display: block; font-weight: 400; margin-top: 2px; color: inherit; opacity: 0.8; }
+
+  /* ── Code blocks ── */
+  pre {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    overflow-x: auto;
+    font-family: 'Consolas', 'Fira Code', monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    margin: 12px 0;
+  }
+  .kw  { color: #569cd6; }
+  .str { color: #ce9178; }
+  .cm  { color: #6a9955; }
+  .fn  { color: #dcdcaa; }
+  .num { color: #b5cea8; }
+  .tp  { color: #4ec9b0; }
+
+  /* ── Info / Warning boxes ── */
+  .box {
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 14px 0;
+    border-left: 3px solid;
+    font-size: 0.875rem;
+  }
+  .box.info    { background: #1a2d3a; border-color: var(--accent); }
+  .box.success { background: #1a2e1a; border-color: var(--accent2); }
+  .box.warn    { background: #332d00; border-color: var(--yellow); }
+  .box.danger  { background: #2e1a1a; border-color: var(--red); }
+  .box strong  { display: block; margin-bottom: 4px; }
+  .box.info    strong { color: var(--accent); }
+  .box.success strong { color: var(--accent2); }
+  .box.warn    strong { color: var(--yellow); }
+  .box.danger  strong { color: var(--red); }
+
+  /* ── Two-column grid ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+
+  /* ── Comparison table ── */
+  .cmp { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .cmp th {
+    background: var(--bg3);
+    padding: 8px 14px;
+    color: var(--muted);
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .cmp td { padding: 8px 14px; border-bottom: 1px solid #2a2a2a; }
+  .cmp tr:hover td { background: #262626; }
+  .cmp .prop { color: var(--accent4); font-family: monospace; font-weight: 600; }
+  .yes { color: var(--accent2); font-weight: 600; }
+  .no  { color: var(--muted); }
+
+  /* ── Security checklist ── */
+  .checklist { list-style: none; padding: 0; }
+  .checklist li {
+    padding: 10px 14px 10px 38px;
+    position: relative;
+    border-bottom: 1px solid #2a2a2a;
+    font-size: 0.875rem;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist li::before {
+    content: '✓';
+    position: absolute;
+    left: 12px;
+    color: var(--accent2);
+    font-weight: 700;
+  }
+  .checklist li strong { color: #fff; }
+  .checklist li .why { display: block; color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1><span>CryptoPad</span> — Format de chiffrement</h1>
+  <p class="sub">Analyse technique approfondie des formats CPAD et CPDF · Botan 3 · C++20</p>
+  <div class="badges">
+    <span class="badge">Triple AEAD</span>
+    <span class="badge">AES-256/SIV</span>
+    <span class="badge">Serpent-256/GCM</span>
+    <span class="badge">ChaCha20/Poly1305</span>
+    <span class="badge green">Argon2id</span>
+    <span class="badge green">HMAC-SHA256</span>
+    <span class="badge orange">KEK/DEK</span>
+    <span class="badge yellow">Version 1</span>
+  </div>
+</div>
+
+<div class="page">
+
+  <!-- ── TOC ── -->
+  <div class="toc">
+    <h2>Sommaire</h2>
+    <ol>
+      <li><a href="#overview">Vue d'ensemble — deux formats</a></li>
+      <li><a href="#header">Structure de l'en-tête (257 octets)</a></li>
+      <li><a href="#dek">La DEK — clés et métadonnées</a></li>
+      <li><a href="#kdf">Dérivation de clé : Argon2id → KEK</a></li>
+      <li><a href="#dek-wrap">Enveloppement de la DEK (ChaCha20Poly1305)</a></li>
+      <li><a href="#triple-aead">Triple AEAD — les trois couches de chiffrement</a></li>
+      <li><a href="#ad">Données associées (AD) et liaison des chunks</a></li>
+      <li><a href="#hmac">HMAC-SHA256 global</a></li>
+      <li><a href="#cpad">Format CPAD — chiffrement texte en mémoire</a></li>
+      <li><a href="#cpdf">Format CPDF — chiffrement de fichiers par chunks</a></li>
+      <li><a href="#threading">Parallélisme et gestion mémoire</a></li>
+      <li><a href="#security">Analyse de sécurité</a></li>
+      <li><a href="#sizes">Récapitulatif des tailles</a></li>
+    </ol>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="overview">
+    <h2 class="section-title">1. Vue d'ensemble — deux formats</h2>
+
+    <p>CryptoPad utilise deux formats binaires distincts partageant exactement les mêmes primitives cryptographiques. Ils ne diffèrent que par le <em>magic number</em> et l'organisation des données (bloc unique vs. chunks).</p>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Format CPAD — texte chiffré</div>
+        <p>Utilisé pour chiffrer le contenu textuel des notes. Traitement en une seule passe, tout en mémoire. Magic : <code style="color:var(--accent)">CPAD</code>.</p>
+        <p style="color:var(--muted);font-size:0.82rem">Extension implicite · QByteArray · In-process</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Format CPDF — fichiers arbitraires</div>
+        <p>Utilisé pour chiffrer des fichiers de toute taille. Traitement par chunks de 1 MiB en parallèle. Magic : <code style="color:var(--accent2)">CPDF</code>.</p>
+        <p style="color:var(--muted);font-size:0.82rem">Extension <code>.cryptopad</code> · Streaming · Multi-thread</p>
+      </div>
+    </div>
+
+    <div class="box info">
+      <strong>Compatibilité avec Arsenic</strong>
+      Le format CPDF est identique au format produit par le projet Arsenic. Un fichier chiffré par l'un peut être déchiffré par l'autre. CryptoPad détecte les fichiers CPDF tentativement déchiffrés via l'interface texte et redirige automatiquement vers le déchiffrement fichier.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="header">
+    <h2 class="section-title">2. Structure de l'en-tête (257 octets)</h2>
+
+    <p>Les deux formats partagent un en-tête identique de <strong>257 octets</strong>, divisé en deux parties : une partie <em>immutable</em> (21 B) utilisée comme données associées (AD) dans chaque couche AEAD, et une partie <em>mutable</em> contenant les paramètres KDF et la DEK chiffrée.</p>
+
+    <table class="memmap">
+      <thead>
+        <tr>
+          <th>Offset</th>
+          <th>Taille</th>
+          <th>Champ</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="sep"><td colspan="4">▸ En-tête immutable (21 B) — sert d'AD à chaque couche AEAD</td></tr>
+        <tr>
+          <td class="off">0x00</td>
+          <td class="sz">4 B</td>
+          <td class="field-name">magic</td>
+          <td class="field-desc"><code>'CPAD'</code> (0x43 50 41 44) ou <code>'CPDF'</code> (0x43 50 44 46) — identifie le format</td>
+        </tr>
+        <tr>
+          <td class="off">0x04</td>
+          <td class="sz">1 B</td>
+          <td class="field-name">version</td>
+          <td class="field-desc">Numéro de version du format. Actuellement <code>0x01</code></td>
+        </tr>
+        <tr>
+          <td class="off">0x05</td>
+          <td class="sz">16 B</td>
+          <td class="field-name">file_id</td>
+          <td class="field-desc">Identifiant aléatoire du fichier (CSPRNG). Lie tous les chunks à ce fichier. Stable même si le mot de passe change</td>
+        </tr>
+        <tr class="sep"><td colspan="4">▸ En-tête mutable (236 B) — paramètres KDF + DEK chiffrée</td></tr>
+        <tr>
+          <td class="off">0x15</td>
+          <td class="sz">16 B</td>
+          <td class="field-name">kdf_salt</td>
+          <td class="field-desc">Sel aléatoire pour Argon2id. Renouvelé à chaque chiffrement</td>
+        </tr>
+        <tr>
+          <td class="off">0x25</td>
+          <td class="sz">4 B</td>
+          <td class="field-name">argon2_mem</td>
+          <td class="field-desc">Paramètre mémoire Argon2id (uint32 LE). Défaut : <code>65 536</code> (64 MiB)</td>
+        </tr>
+        <tr>
+          <td class="off">0x29</td>
+          <td class="sz">4 B</td>
+          <td class="field-name">argon2_iter</td>
+          <td class="field-desc">Nombre d'itérations Argon2id (uint32 LE). Défaut : <code>3</code></td>
+        </tr>
+        <tr>
+          <td class="off">0x2D</td>
+          <td class="sz">4 B</td>
+          <td class="field-name">argon2_par</td>
+          <td class="field-desc">Parallélisme Argon2id (uint32 LE). Défaut : <code>4</code></td>
+        </tr>
+        <tr>
+          <td class="off">0x31</td>
+          <td class="sz">24 B</td>
+          <td class="field-name">dek_nonce</td>
+          <td class="field-desc">Nonce XChaCha20 pour l'enveloppement de la DEK. 24 B aléatoires</td>
+        </tr>
+        <tr>
+          <td class="off">0x49</td>
+          <td class="sz">184 B</td>
+          <td class="field-name">enc_dek</td>
+          <td class="field-desc">DEK chiffrée par ChaCha20Poly1305(KEK) : 168 B plaintext + 16 B tag d'authentification</td>
+        </tr>
+        <tr class="sep"><td colspan="4">▸ Fin de l'en-tête — offset 0x101 = 257 décimal</td></tr>
+      </tbody>
+    </table>
+
+    <div class="box success">
+      <strong>Validation anti-DoS à la lecture</strong>
+      Les paramètres Argon2 sont validés strictement au déchiffrement : mémoire entre 8 et 524 288 KiB (8×65 536), itérations et parallélisme entre 1 et 16. Un fichier malveillant avec <code>argon2_mem = 0xFFFFFFFF</code> serait rejeté immédiatement.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="dek">
+    <h2 class="section-title">3. La DEK — clés et métadonnées</h2>
+
+    <p>La <strong>Data Encryption Key</strong> (DEK) est un bloc de 168 octets générés aléatoirement à chaque chiffrement. Elle contient les quatre clés des couches AEAD plus la taille originale du fichier.</p>
+
+    <div class="key-strip">
+      <div class="key-seg ks-k1">K1 — AES-256/SIV<span class="ks-label">64 B · offset 0</span></div>
+      <div class="key-seg ks-k2">K2 — Serpent/GCM<span class="ks-label">32 B · offset 64</span></div>
+      <div class="key-seg ks-k3">K3 — ChaCha20<span class="ks-label">32 B · offset 96</span></div>
+      <div class="key-seg ks-k4">K4 — HMAC<span class="ks-label">32 B · offset 128</span></div>
+      <div class="key-seg ks-sz">origSize<span class="ks-label">8 B · offset 160</span></div>
+    </div>
+
+    <table class="memmap">
+      <thead>
+        <tr><th>Offset DEK</th><th>Taille</th><th>Champ</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="off">0</td><td class="sz">64 B</td>
+          <td class="field-name">K1</td>
+          <td class="field-desc">Clé AES-256/SIV (= 2 × 256 bits : une pour CTR, une pour S2V)</td>
+        </tr>
+        <tr>
+          <td class="off">64</td><td class="sz">32 B</td>
+          <td class="field-name">K2</td>
+          <td class="field-desc">Clé Serpent-256/GCM</td>
+        </tr>
+        <tr>
+          <td class="off">96</td><td class="sz">32 B</td>
+          <td class="field-name">K3</td>
+          <td class="field-desc">Clé ChaCha20Poly1305 (XChaCha20, nonce 24 B)</td>
+        </tr>
+        <tr>
+          <td class="off">128</td><td class="sz">32 B</td>
+          <td class="field-name">K4</td>
+          <td class="field-desc">Clé HMAC-SHA256 pour le MAC global</td>
+        </tr>
+        <tr>
+          <td class="off">160</td><td class="sz">8 B</td>
+          <td class="field-name">origSize</td>
+          <td class="field-desc">Taille originale du plaintext (uint64 LE). Permet de supprimer le padding aléatoire du dernier chunk (CPDF uniquement)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>Total DEK plaintext : <strong>168 octets</strong>. La DEK chiffrée (<code>enc_dek</code>) fait 184 octets (168 + 16 octets de tag ChaCha20Poly1305).</p>
+
+    <div class="box warn">
+      <strong>Séparation KEK/DEK</strong>
+      Changer le mot de passe ne nécessite que de re-chiffrer la DEK (168 B) sans toucher aux données. Les données restent identiques — seul l'enveloppe de clé change. C'est le principe de la séparation KEK (Key Encryption Key) / DEK (Data Encryption Key).
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="kdf">
+    <h2 class="section-title">4. Dérivation de clé : Argon2id → KEK</h2>
+
+    <p>Le mot de passe utilisateur est converti en UTF-8 puis passé à <strong>Argon2id</strong> pour produire une KEK de 32 octets. Les paramètres sont stockés dans l'en-tête du fichier, ce qui permet une migration future vers des paramètres plus forts.</p>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">Paramètres Argon2id</div>
+        <table class="memmap">
+          <tr><td class="field-name">Algorithme</td><td>Argon2<strong>id</strong></td></tr>
+          <tr><td class="field-name">Mémoire</td><td>65 536 KiB <span style="color:var(--muted)">(64 MiB)</span></td></tr>
+          <tr><td class="field-name">Itérations</td><td>3</td></tr>
+          <tr><td class="field-name">Parallélisme</td><td>4 threads</td></tr>
+          <tr><td class="field-name">Sel</td><td>16 octets aléatoires (CSPRNG)</td></tr>
+          <tr><td class="field-name">Sortie</td><td>32 octets (KEK)</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Propriétés de sécurité</div>
+        <ul class="checklist">
+          <li><strong>Argon2id</strong><span class="why">Résistant aux attaques GPU/ASIC (mémoire-intensif) et aux attaques time-memory trade-off. Gagnant de la Password Hashing Competition 2015.</span></li>
+          <li><strong>Sel 16 B aléatoire</strong><span class="why">Empêche les rainbow tables et les attaques multi-cibles.</span></li>
+          <li><strong>Mot de passe zéroïsé</strong><span class="why">Le buffer UTF-8 (<code>Botan::secure_vector&lt;char&gt;</code>) est effacé immédiatement après <code>derive_key()</code>.</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="pipeline">
+      <div class="pipe-box plain"><div class="name">password</div><div class="detail">UTF-8 bytes</div></div>
+      <span class="arrow">+</span>
+      <div class="pipe-box plain"><div class="name">kdf_salt</div><div class="detail">16 B random</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box kdf"><div class="name">Argon2id</div><div class="detail">64 MiB · 3 iter · 4 par</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box wrap"><div class="name">KEK</div><div class="detail">32 B</div></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="dek-wrap">
+    <h2 class="section-title">5. Enveloppement de la DEK</h2>
+
+    <p>La DEK (168 B) est chiffrée avec <strong>ChaCha20Poly1305</strong> en utilisant la KEK et un nonce aléatoire de 24 octets. L'algorithme XChaCha20 (nonce 192 bits) est utilisé ici, ce qui élimine le risque de collision de nonce.</p>
+
+    <div class="pipeline">
+      <div class="pipe-box plain"><div class="name">DEK</div><div class="detail">168 B plaintext</div></div>
+      <span class="arrow">+</span>
+      <div class="pipe-box wrap"><div class="name">KEK</div><div class="detail">32 B</div></div>
+      <span class="arrow">+</span>
+      <div class="pipe-box plain"><div class="name">dek_nonce</div><div class="detail">24 B random</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box layer3"><div class="name">ChaCha20Poly1305</div><div class="detail">enc + 16 B tag</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box plain"><div class="name">enc_dek</div><div class="detail">184 B dans header</div></div>
+    </div>
+
+    <div class="box info">
+      <strong>Pas d'AD pour l'enveloppement</strong>
+      Le wrappage KEK/DEK n'utilise pas de données associées — le binding au fichier est assuré en amont par le <code>file_id</code> dans l'en-tête immutable, lui-même couvert par le HMAC global.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="triple-aead">
+    <h2 class="section-title">6. Triple AEAD — les trois couches de chiffrement</h2>
+
+    <p>Chaque bloc de données (chunk ou plaintext complet) est chiffré trois fois successivement, chaque couche ajoutant un tag d'authentification de 16 octets. Les couches utilisent des algorithmes de familles cryptographiques différentes pour une défense en profondeur.</p>
+
+    <div class="pipeline" style="margin-bottom:8px">
+      <div class="pipe-box plain"><div class="name">Plaintext</div><div class="detail">P octets</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box layer1"><div class="name">AES-256/SIV</div><div class="detail">K1 · N1(16B) · +16B</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box layer2"><div class="name">Serpent/GCM</div><div class="detail">K2 · N2(12B) · +16B</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box layer3"><div class="name">ChaCha20/Poly1305</div><div class="detail">K3 · N3(24B) · +16B</div></div>
+      <span class="arrow">→</span>
+      <div class="pipe-box plain"><div class="name">Ciphertext</div><div class="detail">P+48 octets</div></div>
+    </div>
+
+    <p style="color:var(--muted);font-size:0.82rem;margin-bottom:20px">Le déchiffrement s'effectue dans l'ordre inverse : ChaCha20Poly1305 → Serpent/GCM → AES-256/SIV. Chaque couche vérifie son tag avant de passer à la suivante.</p>
+
+    <h3 class="sub-title">Couche 1 — AES-256/SIV</h3>
+    <div class="card">
+      <table class="memmap">
+        <tr><td class="field-name">Algorithme</td><td>AES-256 en mode SIV (Synthetic IV / RFC 5297)</td></tr>
+        <tr><td class="field-name">Clé</td><td>K1 = 64 octets (2 × 256 bits : K_enc pour AES-CTR + K_mac pour S2V-AES)</td></tr>
+        <tr><td class="field-name">Nonce N1</td><td>16 octets aléatoires (CSPRNG par chunk)</td></tr>
+        <tr><td class="field-name">Overhead</td><td>+16 B (tag SIV = IV synthétique)</td></tr>
+        <tr><td class="field-name">Propriété clé</td><td><strong>Nonce-misuse resistant</strong> : une réutilisation de nonce ne compromet que la confidentialité (pas l'authenticité). Seule la non-répétition du plaintext garantit la sécurité totale.</td></tr>
+      </table>
+    </div>
+
+    <h3 class="sub-title">Couche 2 — Serpent-256/GCM</h3>
+    <div class="card">
+      <table class="memmap">
+        <tr><td class="field-name">Algorithme</td><td>Serpent-256 (chiffre de bloc) en mode GCM (Galois/Counter Mode)</td></tr>
+        <tr><td class="field-name">Clé</td><td>K2 = 32 octets (256 bits)</td></tr>
+        <tr><td class="field-name">Nonce N2</td><td>12 octets aléatoires (nonce GCM standard 96 bits)</td></tr>
+        <tr><td class="field-name">Overhead</td><td>+16 B (GHASH tag)</td></tr>
+        <tr><td class="field-name">Propriété clé</td><td>Serpent est le finaliste le plus conservateur de l'AES competition (1997-2000), reconnu pour sa large marge de sécurité. Famille différente d'AES (réseau de substitution-permutation différent).</td></tr>
+      </table>
+    </div>
+
+    <h3 class="sub-title">Couche 3 — ChaCha20/Poly1305</h3>
+    <div class="card">
+      <table class="memmap">
+        <tr><td class="field-name">Algorithme</td><td>XChaCha20 (stream cipher) + Poly1305 (MAC)</td></tr>
+        <tr><td class="field-name">Clé</td><td>K3 = 32 octets (256 bits)</td></tr>
+        <tr><td class="field-name">Nonce N3</td><td>24 octets aléatoires (XChaCha20 — espace nonce 192 bits)</td></tr>
+        <tr><td class="field-name">Overhead</td><td>+16 B (Poly1305 tag)</td></tr>
+        <tr><td class="field-name">Propriété clé</td><td>Chiffre en flot (pas de cache d'accès mémoire dépendant de la clé) → résistant aux attaques par canal caché sur les plateformes sans AES-NI. Famille entièrement distincte d'AES/Serpent.</td></tr>
+      </table>
+    </div>
+
+    <div class="box success">
+      <strong>Indépendance des familles cryptographiques</strong>
+      Les trois algorithmes appartiennent à des familles totalement différentes : AES (réseau SP NIST), Serpent (réseau SP indépendant), ChaCha20 (chiffre en flot ARX). Une percée contre l'une des familles ne compromet pas les deux autres. La sécurité est bornée inférieurement par le meilleur algorithme survivant.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="ad">
+    <h2 class="section-title">7. Données associées (AD) et liaison des chunks</h2>
+
+    <p>Chaque couche AEAD reçoit les mêmes <strong>données associées</strong> qui sont authentifiées mais non chiffrées. L'AD lie cryptographiquement chaque bloc à sa position dans le fichier et à l'identité du fichier.</p>
+
+    <div class="key-strip">
+      <div class="key-seg ks-k1">immutHdr (21 B)<span class="ks-label">magic + version + file_id</span></div>
+      <div class="key-seg ks-k4">chunkIdx (8 B LE)<span class="ks-label">index 0-based du chunk</span></div>
+      <div class="key-seg ks-k4">totalChunks (8 B LE)<span class="ks-label">nombre total de chunks</span></div>
+    </div>
+
+    <p>AD total : <strong>37 octets</strong> = 21 (immutHdr) + 8 (chunkIdx) + 8 (totalChunks).</p>
+
+    <div class="grid2">
+      <div class="box success" style="margin:0">
+        <strong>Protection contre la réordonnance</strong>
+        chunkIdx dans l'AD lie chaque chunk à sa position. Permuter deux chunks invalide leurs tags AEAD respectifs.
+      </div>
+      <div class="box success" style="margin:0">
+        <strong>Protection contre la transplantation inter-fichiers</strong>
+        file_id dans l'AD est unique à chaque fichier. Un chunk d'un fichier ne peut pas être réutilisé dans un autre.
+      </div>
+    </div>
+    <br>
+    <div class="box success">
+      <strong>Protection contre la troncature et l'ajout de chunks</strong>
+      totalChunks dans l'AD force la vérification du compte total. Tronquer ou ajouter des chunks invalide l'AD de tous les chunks restants. Le HMAC global fournit une couche supplémentaire de détection.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="hmac">
+    <h2 class="section-title">8. HMAC-SHA256 global</h2>
+
+    <p>En plus des tags d'authentification par couche AEAD, un <strong>HMAC-SHA256</strong> couvre l'intégralité du fichier chiffré. Il est calculé avec la clé K4 extraite de la DEK et stocké en trailer de 32 octets.</p>
+
+    <h3 class="sub-title">Entrée du HMAC</h3>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">CPAD — texte chiffré</div>
+        <pre>HMAC-SHA256(K4,
+  fullHdr   <span class="cm">// 257 B</span>
+  || N1     <span class="cm">// 16 B nonce AES-SIV</span>
+  || N2     <span class="cm">// 12 B nonce Serpent/GCM</span>
+  || N3     <span class="cm">// 24 B nonce ChaCha20</span>
+  || ciphertext
+)</pre>
+      </div>
+      <div class="card">
+        <div class="card-title">CPDF — fichier par chunks</div>
+        <pre>HMAC-SHA256(K4,
+  fullHdr   <span class="cm">// 257 B</span>
+  || [pour chaque chunk i=0..N-1]
+       (N1_i || N2_i || N3_i
+        || ciphertext_i)
+)</pre>
+      </div>
+    </div>
+
+    <div class="box info">
+      <strong>Ordre : Encrypt-then-MAC</strong>
+      Le HMAC est calculé <em>après</em> le chiffrement (sur le ciphertext) et vérifié <em>avant</em> le déchiffrement. Cela respecte le principe Encrypt-then-MAC, qui évite d'exposer le déchiffreur à des oracles de padding ou à un travail inutile sur des données corrompues.
+    </div>
+
+    <div class="box warn">
+      <strong>Particularité CPDF</strong>
+      Pour CPDF, le HMAC est mis à jour au fil des chunks lors du chiffrement (flux séquentiel), puis vérifié <em>après</em> la lecture de tous les chunks au déchiffrement. La vérification intervient donc après que les données en clair ont été écrites — c'est une contrainte du design streaming. Le HMAC détecte principalement les altérations globales (troncature, ajout d'octets), les altérations par chunk étant détectées par les tags AEAD individuels.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="cpad">
+    <h2 class="section-title">9. Format CPAD — chiffrement texte</h2>
+
+    <p>Utilisé pour les notes textuelles. L'intégralité du plaintext est traitée en une passe sans chunking. Le résultat est un <code>QByteArray</code> en mémoire.</p>
+
+    <table class="memmap">
+      <thead><tr><th>Champ</th><th>Taille</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="field-name">Header</td><td class="sz">257 B</td><td>En-tête commun (cf. §2)</td></tr>
+        <tr><td class="field-name">N1</td><td class="sz">16 B</td><td>Nonce AES-256/SIV</td></tr>
+        <tr><td class="field-name">N2</td><td class="sz">12 B</td><td>Nonce Serpent/GCM</td></tr>
+        <tr><td class="field-name">N3</td><td class="sz">24 B</td><td>Nonce ChaCha20Poly1305</td></tr>
+        <tr><td class="field-name">Ciphertext</td><td class="sz">P + 48 B</td><td>Plaintext chiffré 3× + 3 tags (3 × 16 B)</td></tr>
+        <tr><td class="field-name">HMAC-SHA256</td><td class="sz">32 B</td><td>MAC global sur header + nonces + ciphertext</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Overhead fixe</strong> : 257 + 52 + 48 + 32 = <strong>389 octets</strong> (confirmé par la constante <code>ENCRYPT_OVERHEAD = 389</code>).</p>
+
+    <div class="box info">
+      <strong>AD pour CPAD</strong>
+      chunkIdx = 0, totalChunks = 1 (chunk unique). L'AD est donc <code>immutHdr || 0x0000000000000000 || 0x0100000000000000</code> (37 B).
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="cpdf">
+    <h2 class="section-title">10. Format CPDF — chiffrement de fichiers par chunks</h2>
+
+    <p>Utilisé pour les fichiers arbitraires. Le fichier est découpé en chunks de <strong>1 MiB (1 048 576 octets)</strong>. Chaque chunk est chiffré indépendamment avec des nonces frais, ce qui permet le traitement parallèle.</p>
+
+    <table class="memmap">
+      <thead><tr><th>Champ</th><th>Taille</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="field-name">Header</td><td class="sz">257 B</td><td>En-tête commun</td></tr>
+        <tr class="sep"><td colspan="3">▸ Répété pour chaque chunk i = 0 … N−1</td></tr>
+        <tr><td class="field-name">N1_i</td><td class="sz">16 B</td><td>Nonce AES-SIV du chunk i (frais à chaque chunk)</td></tr>
+        <tr><td class="field-name">N2_i</td><td class="sz">12 B</td><td>Nonce Serpent/GCM du chunk i</td></tr>
+        <tr><td class="field-name">N3_i</td><td class="sz">24 B</td><td>Nonce ChaCha20 du chunk i</td></tr>
+        <tr><td class="field-name">Ciphertext_i</td><td class="sz">1 MiB + 48 B</td><td>Chunk chiffré. Le dernier chunk est padé à 1 MiB avec des octets aléatoires avant chiffrement</td></tr>
+        <tr class="sep"><td colspan="3">▸ Fin des chunks</td></tr>
+        <tr><td class="field-name">HMAC-SHA256</td><td class="sz">32 B</td><td>MAC global couvrant header + tous les chunks chiffrés</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">Taille d'un fichier chiffré (CPDF)</h3>
+    <pre><span class="kw">N</span> = ceil(origSize / <span class="num">1048576</span>)           <span class="cm">// nombre de chunks</span>
+overhead_par_chunk = <span class="num">52</span> + <span class="num">48</span>           <span class="cm">// nonces(52) + 3 tags(48)</span>
+taille_chiffrée = <span class="num">257</span>                   <span class="cm">// header</span>
+               + N × (<span class="num">1048576</span> + <span class="num">100</span>)   <span class="cm">// chunks paddés</span>
+               + <span class="num">32</span>                    <span class="cm">// HMAC trailer</span></pre>
+
+    <div class="box warn">
+      <strong>Padding aléatoire du dernier chunk</strong>
+      Le dernier chunk est toujours traité comme un chunk plein de 1 MiB : les octets au-delà de la fin réelle sont remplis par le CSPRNG avant chiffrement. La taille originale est stockée chiffrée dans la DEK (<code>origSize</code>) et utilisée au déchiffrement pour tronquer la sortie. Cela dissimule la taille exacte du fichier source (à la granularité de 1 MiB).
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="threading">
+    <h2 class="section-title">11. Parallélisme et gestion mémoire</h2>
+
+    <h3 class="sub-title">Traitement par batches multi-threadés (CPDF)</h3>
+    <p>Le chiffrement CPDF traite les chunks en batches dont la taille est égale au nombre de threads logiques (<code>QThread::idealThreadCount()</code>). Chaque chunk d'un batch est chiffré/déchiffré dans un <code>std::async</code> indépendant.</p>
+
+    <pre><span class="cm">// Pseudo-code du batch loop</span>
+<span class="kw">for</span> done = 0; done &lt; totalChunks; done += batchSize:
+    batchSize = min(nThreads, totalChunks - done)
+
+    <span class="cm">// 1. Lecture séquentielle de batchSize chunks</span>
+    plains[0..batchSize] = read_from_disk()
+
+    <span class="cm">// 2. Chiffrement parallèle</span>
+    futures[i] = std::async(encryptChunk, plains[i], ...)
+
+    <span class="cm">// 3. Écriture séquentielle + mise à jour HMAC</span>
+    <span class="kw">for</span> i in 0..batchSize:
+        enc = futures[i].get()
+        mac.update(enc)
+        write(enc)</pre>
+
+    <h3 class="sub-title">Gestion mémoire sécurisée</h3>
+    <ul class="checklist">
+      <li><strong>Botan::secure_vector&lt;T&gt;</strong><span class="why">Efface automatiquement la mémoire (zéro-fill) lors de la destruction. Utilisé pour toutes les clés (DEK, KEK, K1..K4) et les données déchiffrées.</span></li>
+      <li><strong>Zéroïsation immédiate du mot de passe</strong><span class="why">Le buffer <code>Botan::secure_vector&lt;char&gt; _pwd</code> est réassigné à un vecteur vide immédiatement après <code>derive_key()</code>, avant toute opération suivante.</span></li>
+      <li><strong>Guard RAII pour le fichier de sortie</strong><span class="why">Un objet <code>Guard</code> local supprime le fichier de sortie si l'opération échoue ou est annulée, évitant les fichiers partiellement chiffrés sur le disque.</span></li>
+      <li><strong>Annulation coopérative</strong><span class="why">Un <code>std::atomic&lt;bool&gt;</code> est vérifié avant chaque batch. L'annulation lève <code>std::runtime_error("Annulé")</code> et déclenche la suppression du fichier partiel via le Guard.</span></li>
+    </ul>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="security">
+    <h2 class="section-title">12. Analyse de sécurité</h2>
+
+    <ul class="checklist">
+      <li>
+        <strong>Défense en profondeur — triple chiffrement</strong>
+        <span class="why">Trois algorithmes de familles distinctes (AES, Serpent, ChaCha20). Un attaquant doit casser les trois simultanément. Chaque couche ajoute 128 bits d'authenticité (tag 16 B).</span>
+      </li>
+      <li>
+        <strong>Résistance à la réutilisation de nonce (AES-SIV)</strong>
+        <span class="why">SIV calcule un IV synthétique à partir de l'AD et du plaintext. Une réutilisation de nonce révèle si deux plaintexts sont identiques, mais ne brise pas l'authenticité. Couche de sécurité supplémentaire contre les bugs de génération de nonce.</span>
+      </li>
+      <li>
+        <strong>Séparation des clés — KEK/DEK</strong>
+        <span class="why">Chaque primitive utilise une clé dédiée. Compromettre K3 (ChaCha20) ne donne pas accès à K1, K2 ou K4. La rotation du mot de passe ne nécessite que de re-chiffrer les 168 B de DEK.</span>
+      </li>
+      <li>
+        <strong>Liaison forte des chunks au fichier</strong>
+        <span class="why">L'AD contient file_id + chunkIdx + totalChunks. Impossible de déplacer, permuter, supprimer ou injecter des chunks sans invalider les tags AEAD.</span>
+      </li>
+      <li>
+        <strong>Intégrité globale via HMAC</strong>
+        <span class="why">Le HMAC couvre l'en-tête complet + tous les chunks. Il détecte les altérations qui ne toucheraient pas un chunk individuel (troncature, ajout de données, modification d'en-tête).</span>
+      </li>
+      <li>
+        <strong>Protection brute-force via Argon2id</strong>
+        <span class="why">64 MiB de mémoire par essai, 3 passes. Sur du matériel standard, ≈ 0.5–2 s par tentative. Les ASICs sont pénalisés par la contrainte mémoire.</span>
+      </li>
+      <li>
+        <strong>Résistance aux canaux cachés (ChaCha20)</strong>
+        <span class="why">ChaCha20 n'utilise pas de tables de substitution (S-box) — opérations ARX pures. Pas de timing-attack via les accès cache, contrairement à AES sans AES-NI hardware.</span>
+      </li>
+      <li>
+        <strong>Dissimulation de taille (CPDF)</strong>
+        <span class="why">Padding aléatoire du dernier chunk à 1 MiB. Un adversaire passif ne peut déduire la taille du fichier original qu'à la granularité de 1 MiB.</span>
+      </li>
+    </ul>
+
+    <div class="box danger">
+      <strong>Points d'attention</strong>
+      <ul style="margin-top:6px;padding-left:18px;font-size:0.85rem">
+        <li style="margin-bottom:6px">Le CPDF vérifie le HMAC <em>après</em> avoir écrit les données en clair sur le disque (contrainte streaming). Un fichier corrompu sera supprimé après la vérification, mais les données auront été temporairement sur le disque.</li>
+        <li style="margin-bottom:6px">Les nonces sont générés par <code>Botan::AutoSeeded_RNG</code> (CSPRNG OS-backed). La sécurité dépend de la qualité de l'entropie système.</li>
+        <li>L'utilisation de la même clé K1 pour les N chunks d'un même fichier (avec nonces différents) est sécurisée tant que les nonces ne se répètent pas. La probabilité de collision est négligeable (<code>2^{-128}</code> pour un nonce 16 B sur un petit nombre de chunks).</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════ -->
+  <section id="sizes">
+    <h2 class="section-title">13. Récapitulatif des tailles</h2>
+
+    <table class="cmp">
+      <thead>
+        <tr>
+          <th>Composant</th>
+          <th>Taille</th>
+          <th>CPAD</th>
+          <th>CPDF</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td class="prop">Header complet</td><td>257 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">└ immutHdr (AD)</td><td>21 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">└ kdf_salt</td><td>16 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">└ argon2 params</td><td>12 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">└ dek_nonce</td><td>24 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">└ enc_dek</td><td>184 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">Nonces par chunk (N1+N2+N3)</td><td>52 B</td><td class="yes">1×</td><td class="yes">N×</td></tr>
+        <tr><td class="prop">Tags AEAD par chunk</td><td>48 B (3×16)</td><td class="yes">1×</td><td class="yes">N×</td></tr>
+        <tr><td class="prop">HMAC trailer</td><td>32 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">Overhead total (texte)</td><td>389 B</td><td class="yes">fixe</td><td class="no">—</td></tr>
+        <tr><td class="prop">Overhead par chunk (fichier)</td><td>100 B</td><td class="no">—</td><td class="yes">×N chunks</td></tr>
+        <tr><td class="prop">Taille de chunk</td><td>1 MiB</td><td class="no">—</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">Padding dernier chunk</td><td>variable</td><td class="no">non</td><td class="yes">oui</td></tr>
+        <tr><td class="prop">DEK plaintext</td><td>168 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">KEK (sortie Argon2id)</td><td>32 B</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+        <tr><td class="prop">Entropie totale clés (K1+K2+K3)</td><td>128 B (1024 bits)</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="footer">
+    <p>CryptoPad v1.0.1 · Format version 1 · Bibliothèque Botan 3.12+ · C++20</p>
+    <p style="margin-top:4px">Généré le 2026-05-27</p>
+  </div>
+
+</div>
+</body>
+</html>

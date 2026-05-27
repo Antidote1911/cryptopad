@@ -2,26 +2,52 @@
 
 #include "botan_all.h"
 
+#include <concepts>
 #include <cstring>
+#include <span>
 #include <stdexcept>
+
+// ── helpers LE ────────────────────────────────────────────────────────────────
+
+template<std::integral T>
+static void pushLE(std::vector<uint8_t>& v, T val) {
+    for (size_t b = 0; b < sizeof(T); ++b)
+        v.push_back(static_cast<uint8_t>(val >> (8 * b)));
+}
+
+template<std::unsigned_integral T>
+[[nodiscard]] static T loadLE(const uint8_t* p) noexcept {
+    T val{};
+    for (size_t b = 0; b < sizeof(T); ++b)
+        val |= static_cast<T>(p[b]) << (8 * b);
+    return val;
+}
+
+template<std::integral T>
+static void storeLE(std::span<uint8_t> dst, T val) {
+    for (size_t b = 0; b < sizeof(T); ++b)
+        dst[b] = static_cast<uint8_t>(val >> (8 * b));
+}
 
 // ── helpers statiques ─────────────────────────────────────────────────────────
 
-static std::vector<uint8_t> buildAD(const std::vector<uint8_t>& immutHdr,
-                                     uint64_t chunkIdx, uint64_t total)
+[[nodiscard]] static std::vector<uint8_t> buildAD(std::span<const uint8_t> immutHdr,
+                                                   uint64_t chunkIdx, uint64_t total)
 {
-    std::vector<uint8_t> ad = immutHdr;
+    std::vector<uint8_t> ad;
     ad.reserve(immutHdr.size() + 16);
-    for (int b = 0; b < 8; ++b) ad.push_back(static_cast<uint8_t>(chunkIdx >> (8*b)));
-    for (int b = 0; b < 8; ++b) ad.push_back(static_cast<uint8_t>(total    >> (8*b)));
+    ad.assign(immutHdr.begin(), immutHdr.end());
+    pushLE(ad, chunkIdx);
+    pushLE(ad, total);
     return ad;
 }
 
-static Botan::secure_vector<uint8_t> aeadEncrypt(const std::string&                   name,
-                                                   const Botan::secure_vector<uint8_t>& key,
-                                                   const std::vector<uint8_t>&          nonce,
-                                                   const std::vector<uint8_t>&          ad,
-                                                   Botan::secure_vector<uint8_t>        data)
+[[nodiscard]] static Botan::secure_vector<uint8_t> aeadEncrypt(
+    std::string_view                     name,
+    const Botan::secure_vector<uint8_t>& key,
+    std::span<const uint8_t>             nonce,
+    std::span<const uint8_t>             ad,
+    Botan::secure_vector<uint8_t>        data)
 {
     auto aead = Botan::AEAD_Mode::create_or_throw(name, Botan::Cipher_Dir::Encryption);
     aead->set_key(key);
@@ -31,11 +57,12 @@ static Botan::secure_vector<uint8_t> aeadEncrypt(const std::string&             
     return data;
 }
 
-static Botan::secure_vector<uint8_t> aeadDecrypt(const std::string&                   name,
-                                                   const Botan::secure_vector<uint8_t>& key,
-                                                   const std::vector<uint8_t>&          nonce,
-                                                   const std::vector<uint8_t>&          ad,
-                                                   Botan::secure_vector<uint8_t>        data)
+[[nodiscard]] static Botan::secure_vector<uint8_t> aeadDecrypt(
+    std::string_view                     name,
+    const Botan::secure_vector<uint8_t>& key,
+    std::span<const uint8_t>             nonce,
+    std::span<const uint8_t>             ad,
+    Botan::secure_vector<uint8_t>        data)
 {
     auto aead = Botan::AEAD_Mode::create_or_throw(name, Botan::Cipher_Dir::Decryption);
     aead->set_key(key);
@@ -54,9 +81,9 @@ QString CryptoManager::algoName()
 
 // ── KDF ───────────────────────────────────────────────────────────────────────
 
-Botan::secure_vector<uint8_t> CryptoManager::deriveKEK(const char*                 password,
-                                                         size_t                      password_len,
-                                                         const std::vector<uint8_t>& kdf_salt,
+Botan::secure_vector<uint8_t> CryptoManager::deriveKEK(const char*              password,
+                                                         size_t                   password_len,
+                                                         std::span<const uint8_t> kdf_salt,
                                                          uint32_t argon_mem,
                                                          uint32_t argon_iter,
                                                          uint32_t argon_par)
@@ -77,7 +104,7 @@ QByteArray CryptoManager::encrypt(const QByteArray& plaintext, const QString& pa
     Botan::AutoSeeded_RNG rng;
 
     std::vector<uint8_t> file_id(16);
-    rng.randomize(file_id.data(), 16);
+    rng.randomize(file_id.data(), file_id.size());
 
     std::vector<uint8_t> kdf_salt(HDR_KDF_SZ);
     rng.randomize(kdf_salt.data(), HDR_KDF_SZ);
@@ -89,8 +116,7 @@ QByteArray CryptoManager::encrypt(const QByteArray& plaintext, const QString& pa
     Botan::secure_vector<uint8_t> dek(DEK_LEN);
     rng.randomize(dek.data(), DEK_KEYS_LEN);
     const uint64_t origSize = static_cast<uint64_t>(plaintext.size());
-    for (int b = 0; b < 8; ++b)
-        dek[DEK_KEYS_LEN + b] = static_cast<uint8_t>(origSize >> (8 * b));
+    storeLE(std::span<uint8_t>(dek.data() + DEK_KEYS_LEN, sizeof(uint64_t)), origSize);
 
     const Botan::secure_vector<uint8_t> k4_mac(dek.begin() + K1+K2+K3,
                                                  dek.begin() + K1+K2+K3+K4);
@@ -103,14 +129,14 @@ QByteArray CryptoManager::encrypt(const QByteArray& plaintext, const QString& pa
     // Enveloppe la DEK avec ChaCha20Poly1305(KEK)
     auto aead_wrap = Botan::AEAD_Mode::create_or_throw("ChaCha20Poly1305", Botan::Cipher_Dir::Encryption);
     aead_wrap->set_key(kek);
-    aead_wrap->start(dek_nonce);
+    aead_wrap->start(std::span{dek_nonce});
     Botan::secure_vector<uint8_t> enc_dek(dek.begin(), dek.end());
     aead_wrap->finish(enc_dek);
 
     // En-tête immutable (21 B) — AD des trois couches AEAD
     std::vector<uint8_t> immutHdr;
     immutHdr.reserve(HDR_IMMUT_SZ);
-    immutHdr.insert(immutHdr.end(), MAGIC, MAGIC + 4);
+    immutHdr.insert(immutHdr.end(), MAGIC.begin(), MAGIC.end());
     immutHdr.push_back(VERSION);
     immutHdr.insert(immutHdr.end(), file_id.begin(), file_id.end());
 
@@ -118,9 +144,9 @@ QByteArray CryptoManager::encrypt(const QByteArray& plaintext, const QString& pa
     std::vector<uint8_t> fullHdr = immutHdr;
     fullHdr.reserve(HDR_SZ);
     fullHdr.insert(fullHdr.end(), kdf_salt.begin(), kdf_salt.end());
-    for (int b = 0; b < 4; ++b) fullHdr.push_back(static_cast<uint8_t>(ARGON2_MEM  >> (8*b)));
-    for (int b = 0; b < 4; ++b) fullHdr.push_back(static_cast<uint8_t>(ARGON2_ITER >> (8*b)));
-    for (int b = 0; b < 4; ++b) fullHdr.push_back(static_cast<uint8_t>(ARGON2_PAR  >> (8*b)));
+    pushLE(fullHdr, ARGON2_MEM);
+    pushLE(fullHdr, ARGON2_ITER);
+    pushLE(fullHdr, ARGON2_PAR);
     fullHdr.insert(fullHdr.end(), dek_nonce.begin(), dek_nonce.end());
     fullHdr.insert(fullHdr.end(), enc_dek.begin(), enc_dek.end());
 
@@ -186,26 +212,25 @@ QByteArray CryptoManager::decrypt(const QByteArray& data, const QString& passwor
 
     const auto* raw = reinterpret_cast<const uint8_t*>(data.constData());
 
-    if (std::memcmp(raw, MAGIC, 4) != 0)
+    if (std::memcmp(raw, MAGIC.data(), MAGIC.size()) != 0)
         throw std::runtime_error("Format de fichier invalide (magic CPAD absent).");
     if (raw[4] != VERSION)
         throw std::runtime_error("Version de format non supportée.");
 
-    uint32_t argon_mem = 0, argon_iter = 0, argon_par = 0;
-    for (int b = 0; b < 4; ++b) argon_mem  |= static_cast<uint32_t>(raw[OFF_ARGON_MEM  + b]) << (8*b);
-    for (int b = 0; b < 4; ++b) argon_iter |= static_cast<uint32_t>(raw[OFF_ARGON_ITER + b]) << (8*b);
-    for (int b = 0; b < 4; ++b) argon_par  |= static_cast<uint32_t>(raw[OFF_ARGON_PAR  + b]) << (8*b);
+    const auto argon_mem  = loadLE<uint32_t>(raw + OFF_ARGON_MEM);
+    const auto argon_iter = loadLE<uint32_t>(raw + OFF_ARGON_ITER);
+    const auto argon_par  = loadLE<uint32_t>(raw + OFF_ARGON_PAR);
 
     if (argon_mem  < 8  || argon_mem  > 524288 ||
         argon_iter < 1  || argon_iter > 16     ||
         argon_par  < 1  || argon_par  > 16)
         throw std::runtime_error("Paramètres Argon2 invalides dans le fichier.");
 
-    const std::vector<uint8_t> immutHdr(raw, raw + HDR_IMMUT_SZ);
-    const std::vector<uint8_t> fullHdr(raw, raw + HDR_SZ);
-    const std::vector<uint8_t> kdf_salt(raw + OFF_KDF_SALT,   raw + OFF_KDF_SALT   + HDR_KDF_SZ);
-    const std::vector<uint8_t> dek_nonce(raw + OFF_DEK_NONCE, raw + OFF_DEK_NONCE  + DEK_NONCE_LEN);
-    const std::vector<uint8_t> enc_dek(raw + OFF_ENC_DEK,    raw + OFF_ENC_DEK    + ENC_DEK_LEN);
+    const std::span<const uint8_t> immutHdr(raw, HDR_IMMUT_SZ);
+    const std::span<const uint8_t> fullHdr(raw, HDR_SZ);
+    const std::span<const uint8_t> kdf_salt(raw + OFF_KDF_SALT,  HDR_KDF_SZ);
+    const std::span<const uint8_t> dek_nonce(raw + OFF_DEK_NONCE, DEK_NONCE_LEN);
+    const std::span<const uint8_t> enc_dek(raw + OFF_ENC_DEK,   ENC_DEK_LEN);
 
     const QByteArray pwUtf8 = password.toUtf8();
     Botan::secure_vector<char> pwd(pwUtf8.constData(), pwUtf8.constData() + pwUtf8.size());
@@ -233,9 +258,9 @@ QByteArray CryptoManager::decrypt(const QByteArray& data, const QString& passwor
     const auto k4mac = slice(K4);
 
     size_t pos = HDR_SZ;
-    const std::vector<uint8_t> n1(raw + pos, raw + pos + N1); pos += N1;
-    const std::vector<uint8_t> n2(raw + pos, raw + pos + N2); pos += N2;
-    const std::vector<uint8_t> n3(raw + pos, raw + pos + N3); pos += N3;
+    const std::span<const uint8_t> n1(raw + pos, N1); pos += N1;
+    const std::span<const uint8_t> n2(raw + pos, N2); pos += N2;
+    const std::span<const uint8_t> n3(raw + pos, N3); pos += N3;
 
     const size_t ctLen = static_cast<size_t>(data.size()) - HDR_SZ - NONCES_SZ - MAC_LEN;
     Botan::secure_vector<uint8_t> cipher(raw + pos, raw + pos + ctLen);

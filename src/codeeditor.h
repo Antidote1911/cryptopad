@@ -14,12 +14,12 @@ public:
     void lineNumberAreaPaintEvent(QPaintEvent* event);
     int  lineNumberAreaWidth() const;
 
-    QString filePath() const        { return m_filePath; }
-    void    setFilePath(const QString& path);
-    bool    isModified() const;
+    [[nodiscard]] QString filePath() const        { return m_filePath; }
+    void                  setFilePath(const QString& path);
+    [[nodiscard]] bool    isModified() const;
 
-    QString sessionPassword() const             { return m_sessionPassword; }
-    void    setSessionPassword(const QString& p){ m_sessionPassword = p; }
+    [[nodiscard]] QString sessionPassword() const             { return m_sessionPassword; }
+    void                  setSessionPassword(const QString& p){ m_sessionPassword = p; }
 
     void toggleBold();
     void toggleItalic();

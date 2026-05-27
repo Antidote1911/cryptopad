@@ -1,8 +1,10 @@
 #pragma once
 #include <QString>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <vector>
 #include "botan_all.h"
 
@@ -39,8 +41,8 @@ private:
     static constexpr uint32_t ARGON2_ITER = 3;
     static constexpr uint32_t ARGON2_PAR  = 4;
 
-    static constexpr char    MAGIC[4] = {'C','P','D','F'};
-    static constexpr uint8_t VERSION  = 1;
+    static constexpr auto    MAGIC   = std::to_array({'C','P','D','F'});
+    static constexpr uint8_t VERSION = 1;
 
     // Key and nonce sizes per AEAD layer
     static constexpr size_t K1 = 64; // AES-256/SIV key  (2 × 256 bits)
@@ -70,28 +72,33 @@ private:
     static constexpr size_t OFF_DEK_NONCE  = 49;
     static constexpr size_t OFF_ENC_DEK    = 73;
 
-    static Botan::secure_vector<uint8_t> deriveKEK(const char*                 password,
-                                                     size_t                      password_len,
-                                                     const std::vector<uint8_t>& kdf_salt,
-                                                     uint32_t argon_mem,
-                                                     uint32_t argon_iter,
-                                                     uint32_t argon_par);
+    [[nodiscard]] static Botan::secure_vector<uint8_t> deriveKEK(
+        const char*              password,
+        size_t                   password_len,
+        std::span<const uint8_t> kdf_salt,
+        uint32_t argon_mem,
+        uint32_t argon_iter,
+        uint32_t argon_par);
 
-    static Botan::secure_vector<uint8_t> wrapDEK(const Botan::secure_vector<uint8_t>& kek,
-                                                   const std::vector<uint8_t>&          nonce,
-                                                   const Botan::secure_vector<uint8_t>& dek);
+    [[nodiscard]] static Botan::secure_vector<uint8_t> wrapDEK(
+        const Botan::secure_vector<uint8_t>& kek,
+        std::span<const uint8_t>             nonce,
+        const Botan::secure_vector<uint8_t>& dek);
 
-    static Botan::secure_vector<uint8_t> unwrapDEK(const Botan::secure_vector<uint8_t>& kek,
-                                                     const std::vector<uint8_t>&          nonce,
-                                                     const std::vector<uint8_t>&          enc_dek);
+    [[nodiscard]] static Botan::secure_vector<uint8_t> unwrapDEK(
+        const Botan::secure_vector<uint8_t>& kek,
+        std::span<const uint8_t>             nonce,
+        std::span<const uint8_t>             enc_dek);
 
-    static std::vector<uint8_t> encryptChunk(Botan::secure_vector<uint8_t>        plain,
-                                              const Botan::secure_vector<uint8_t>& mat,
-                                              const std::vector<uint8_t>&          immutHdr,
-                                              uint64_t chunkIdx, uint64_t totalChunks);
+    [[nodiscard]] static std::vector<uint8_t> encryptChunk(
+        Botan::secure_vector<uint8_t>        plain,
+        const Botan::secure_vector<uint8_t>& mat,
+        std::span<const uint8_t>             immutHdr,
+        uint64_t chunkIdx, uint64_t totalChunks);
 
-    static Botan::secure_vector<uint8_t> decryptChunk(std::vector<uint8_t>                 chunk,
-                                                        const Botan::secure_vector<uint8_t>& mat,
-                                                        const std::vector<uint8_t>&          immutHdr,
-                                                        uint64_t chunkIdx, uint64_t totalChunks);
+    [[nodiscard]] static Botan::secure_vector<uint8_t> decryptChunk(
+        std::vector<uint8_t>                 chunk,
+        const Botan::secure_vector<uint8_t>& mat,
+        std::span<const uint8_t>             immutHdr,
+        uint64_t chunkIdx, uint64_t totalChunks);
 };

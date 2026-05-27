@@ -12,7 +12,7 @@ public:
 
     explicit PasswordDialog(Mode mode, QWidget* parent = nullptr);
 
-    QString password() const;
+    [[nodiscard]] QString password() const;
     void    setNote(const QString& text);   // affiche un avertissement en rouge en tête de dialogue
 
 private:

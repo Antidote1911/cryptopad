@@ -8,11 +8,11 @@
 
 #include "fileencryptor.h"
 
-#define QVERIFY_THROWS(expr)                                                \
-    do {                                                                    \
-        bool _threw = false;                                                \
-        try { (expr); } catch (const std::exception&) { _threw = true; }   \
-        QVERIFY2(_threw, "Exception attendue non levée");                   \
+#define QVERIFY_THROWS(expr)                                                      \
+    do {                                                                          \
+        bool _threw = false;                                                      \
+        try { static_cast<void>(expr); } catch (const std::exception&) { _threw = true; } \
+        QVERIFY2(_threw, "Exception attendue non levée");                         \
     } while (false)
 
 class TestFileEncryptor : public QObject {

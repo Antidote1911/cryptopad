@@ -1,17 +1,19 @@
 #include "syntaxhighlighter.h"
 #include <QFileInfo>
+#include <array>
 
 Language detectLanguage(const QString& filename)
 {
-    QString ext = QFileInfo(filename).suffix().toLower();
+    using enum Language;
+    const QString ext = QFileInfo(filename).suffix().toLower();
     if (ext == "cpp" || ext == "cxx" || ext == "cc" || ext == "c" ||
         ext == "hpp" || ext == "hxx" || ext == "h")
-        return Language::Cpp;
+        return Cpp;
     if (ext == "py")
-        return Language::Python;
+        return Python;
     if (ext == "sh" || ext == "bash" || ext == "zsh" || ext == "fish")
-        return Language::Bash;
-    return Language::None;
+        return Bash;
+    return None;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -37,12 +39,13 @@ SyntaxHighlighter::SyntaxHighlighter(QTextDocument* parent)
 
 void SyntaxHighlighter::setLanguage(Language lang)
 {
+    using enum Language;
     m_lang = lang;
     m_rules.clear();
     switch (lang) {
-    case Language::Cpp:    buildCppRules();    break;
-    case Language::Python: buildPythonRules(); break;
-    case Language::Bash:   buildBashRules();   break;
+    case Cpp:    buildCppRules();    break;
+    case Python: buildPythonRules(); break;
+    case Bash:   buildBashRules();   break;
     default: break;
     }
     rehighlight();
@@ -59,8 +62,7 @@ void SyntaxHighlighter::buildCppRules()
     auto commentFmt = mkFmt(QColor(0x6A, 0x99, 0x55), false, true);
     auto preprocFmt = mkFmt(QColor(0x9B, 0x9B, 0x6A));
 
-    // Keywords
-    static const char* kw[] = {
+    static constexpr auto kw = std::to_array<const char*>({
         "alignas","alignof","and","and_eq","asm","auto","bitand","bitor","bool",
         "break","case","catch","char","char8_t","char16_t","char32_t","class",
         "compl","concept","const","consteval","constexpr","constinit","const_cast",
@@ -72,10 +74,10 @@ void SyntaxHighlighter::buildCppRules()
         "return","short","signed","sizeof","static","static_assert","static_cast",
         "struct","switch","template","this","thread_local","throw","true","try",
         "typedef","typeid","typename","union","unsigned","using","virtual","void",
-        "volatile","wchar_t","while","xor","xor_eq", nullptr
-    };
-    for (int i = 0; kw[i]; ++i)
-        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + kw[i] + QStringLiteral("\\b")), kwFmt});
+        "volatile","wchar_t","while","xor","xor_eq",
+    });
+    for (const auto* k : kw)
+        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + QLatin1String(k) + QStringLiteral("\\b")), kwFmt});
 
     // Types from std
     m_rules.push_back({QRegularExpression(R"(\bstd::\w+)"), typeFmt});
@@ -101,26 +103,26 @@ void SyntaxHighlighter::buildPythonRules()
     auto selfFmt = mkFmt(QColor(0x9C, 0xDC, 0xFE));
     auto decFmt  = mkFmt(QColor(0xDD, 0xDD, 0x00));
 
-    static const char* kw[] = {
+    static constexpr auto kw = std::to_array<const char*>({
         "False","None","True","and","as","assert","async","await","break","class",
         "continue","def","del","elif","else","except","finally","for","from",
         "global","if","import","in","is","lambda","nonlocal","not","or","pass",
-        "raise","return","try","while","with","yield", nullptr
-    };
-    for (int i = 0; kw[i]; ++i)
-        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + kw[i] + QStringLiteral("\\b")), kwFmt});
+        "raise","return","try","while","with","yield",
+    });
+    for (const auto* k : kw)
+        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + QLatin1String(k) + QStringLiteral("\\b")), kwFmt});
 
-    static const char* builtins[] = {
+    static constexpr auto builtins = std::to_array<const char*>({
         "abs","all","any","bin","bool","bytes","callable","chr","dict","dir",
         "divmod","enumerate","eval","exec","filter","float","format","frozenset",
         "getattr","globals","hasattr","hash","help","hex","id","input","int",
         "isinstance","issubclass","iter","len","list","locals","map","max","min",
         "next","object","oct","open","ord","pow","print","property","range",
         "repr","reversed","round","set","setattr","slice","sorted","staticmethod",
-        "str","sum","super","tuple","type","vars","zip", nullptr
-    };
-    for (int i = 0; builtins[i]; ++i)
-        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + builtins[i] + QStringLiteral("\\b")), builtFmt});
+        "str","sum","super","tuple","type","vars","zip",
+    });
+    for (const auto* b : builtins)
+        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + QLatin1String(b) + QStringLiteral("\\b")), builtFmt});
 
     // self / cls
     m_rules.push_back({QRegularExpression(R"(\b(self|cls)\b)"), selfFmt});
@@ -148,23 +150,23 @@ void SyntaxHighlighter::buildBashRules()
     auto numFmt  = mkFmt(QColor(0xB5, 0xCE, 0xA8));
     auto builtFmt= mkFmt(QColor(0xDC, 0xDC, 0xAA));
 
-    static const char* kw[] = {
+    static constexpr auto kw = std::to_array<const char*>({
         "if","then","else","elif","fi","for","while","until","do","done",
         "case","esac","in","function","return","local","export","readonly",
         "declare","typeset","unset","shift","break","continue","exit","trap",
-        "source","select","time","coproc", nullptr
-    };
-    for (int i = 0; kw[i]; ++i)
-        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + kw[i] + QStringLiteral("\\b")), kwFmt});
+        "source","select","time","coproc",
+    });
+    for (const auto* k : kw)
+        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + QLatin1String(k) + QStringLiteral("\\b")), kwFmt});
 
-    static const char* builtins[] = {
+    static constexpr auto builtins = std::to_array<const char*>({
         "echo","printf","read","cd","pwd","ls","cp","mv","rm","mkdir","rmdir",
         "touch","cat","grep","sed","awk","find","sort","uniq","wc","cut","tr",
         "head","tail","test","\\[","true","false","eval","exec","alias","unalias",
-        "jobs","fg","bg","kill","wait","sleep","date","basename","dirname", nullptr
-    };
-    for (int i = 0; builtins[i]; ++i)
-        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + builtins[i] + QStringLiteral("\\b")), builtFmt});
+        "jobs","fg","bg","kill","wait","sleep","date","basename","dirname",
+    });
+    for (const auto* b : builtins)
+        m_rules.push_back({QRegularExpression(QStringLiteral("\\b") + QLatin1String(b) + QStringLiteral("\\b")), builtFmt});
 
     // Variables
     m_rules.push_back({QRegularExpression(R"(\$\{?[\w@#\*\?\-\$\!0-9]+\}?)"), varFmt});
@@ -195,7 +197,8 @@ void SyntaxHighlighter::highlightBlock(const QString& text)
     }
 
     // Multi-line C++ block comments
-    if (m_lang == Language::Cpp) {
+    using enum Language;
+    if (m_lang == Cpp) {
         setCurrentBlockState(0);
         int start = 0;
         if (previousBlockState() != 1)

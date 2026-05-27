@@ -2,7 +2,9 @@
 #include <QByteArray>
 #include <QString>
 #include "botan_all.h"
+#include <array>
 #include <cstdint>
+#include <span>
 #include <vector>
 
 // Format CPAD (binaire) : header(257 B) + nonces(52 B) + ciphertext + HMAC-SHA256(32 B)
@@ -19,13 +21,13 @@ public:
     // Overhead total = header(257) + nonces(52) + 3×tag(16) + HMAC(32) = 389 octets
     static constexpr int ENCRYPT_OVERHEAD = 389;
 
-    static QByteArray encrypt(const QByteArray& plaintext, const QString& password);
-    static QByteArray decrypt(const QByteArray& data, const QString& password);
-    static QString algoName();
+    [[nodiscard]] static QByteArray encrypt(const QByteArray& plaintext, const QString& password);
+    [[nodiscard]] static QByteArray decrypt(const QByteArray& data, const QString& password);
+    [[nodiscard]] static QString algoName();
 
 private:
-    static constexpr char    MAGIC[4] = {'C','P','A','D'};
-    static constexpr uint8_t VERSION  = 1;
+    static constexpr auto    MAGIC   = std::to_array({'C','P','A','D'});
+    static constexpr uint8_t VERSION = 1;
 
     // Tailles des clés et nonces par couche AEAD
     static constexpr size_t K1 = 64; // AES-256/SIV
@@ -62,10 +64,11 @@ private:
     static constexpr size_t MAC_LEN   = 32;
     static constexpr size_t TAG_BYTES = 16;
 
-    static Botan::secure_vector<uint8_t> deriveKEK(const char*                 password,
-                                                     size_t                      password_len,
-                                                     const std::vector<uint8_t>& kdf_salt,
-                                                     uint32_t argon_mem,
-                                                     uint32_t argon_iter,
-                                                     uint32_t argon_par);
+    [[nodiscard]] static Botan::secure_vector<uint8_t> deriveKEK(
+        const char*              password,
+        size_t                   password_len,
+        std::span<const uint8_t> kdf_salt,
+        uint32_t argon_mem,
+        uint32_t argon_iter,
+        uint32_t argon_par);
 };

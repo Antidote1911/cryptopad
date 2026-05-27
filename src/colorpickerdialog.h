@@ -10,9 +10,9 @@ class ColorPickerDialog : public QDialog {
 public:
     explicit ColorPickerDialog(const QColor& initial = Qt::white,
                                QWidget* parent = nullptr);
-    QColor color() const;
-    static QColor getColor(const QColor& initial, QWidget* parent,
-                           const QString& title = {});
+    [[nodiscard]] QColor color() const;
+    [[nodiscard]] static QColor getColor(const QColor& initial, QWidget* parent,
+                                         const QString& title = {});
 
 private:
     void setColor(const QColor& c);
