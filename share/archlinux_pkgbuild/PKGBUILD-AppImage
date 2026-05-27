@@ -6,7 +6,7 @@
 # La variable APPIMAGE_EXTRACT_AND_RUN évite d'avoir besoin de fuse2 au runtime.
 
 pkgname=cryptopad-appimage
-pkgver=1.0.1
+pkgver=1.0.2
 pkgrel=1
 pkgdesc="Rich-text editor with triple-layer file encryption (AppImage pre-built)"
 arch=('x86_64')
