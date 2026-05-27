@@ -207,20 +207,16 @@ jobs:
           Compress-Archive -Path "deploy\*" `
             -DestinationPath "cryptopad-${VERSION}-windows-portable.zip"
 
-      - name: Install NSIS
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: choco install nsis -y --no-progress
-
-      - name: Build NSIS installer
+      - name: Build Inno Setup installer
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $VERSION = $env:GITHUB_REF_NAME -replace '^v', ''
-          & "C:\Program Files (x86)\NSIS\makensis.exe" `
-            /DAPPVERSION=$VERSION `
-            /DSRCDIR=$env:GITHUB_WORKSPACE\deploy `
-            share\windows\installer.nsi
-          Move-Item "share\windows\cryptopad-${VERSION}-windows-setup.exe" "."
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DAppVersion=$VERSION `
+            /DSrcDir="$env:GITHUB_WORKSPACE\deploy" `
+            /O"$env:GITHUB_WORKSPACE" `
+            share\windows\installer.iss
 
       - name: Upload artifact
         if: startsWith(github.ref, 'refs/tags/v')
