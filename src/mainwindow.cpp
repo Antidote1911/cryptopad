@@ -600,10 +600,13 @@ void MainWindow::doOpen(const QString& path)
     }
     const QByteArray cipher = f.readAll();
 
-    // Détection anticipée d'un fichier CPDF ouvert depuis l'éditeur par erreur
-    if (cipher.size() >= 4 && cipher.startsWith("CPDF")) {
-        QMessageBox::information(this, tr("Format CPDF"),
-            tr("Ce fichier est au format CPDF (chiffrement de fichiers).\n"
+    // Détection anticipée d'un fichier de chiffrement de fichiers ouvert depuis l'éditeur
+    // Les fichiers Arsenic commencent par le magic "ARSN" (0x41 0x52 0x53 0x4E)
+    // mais les .cpad chiffrés (texte) ont aussi ce magic — on distingue par l'extension.
+    if (path.endsWith(".arsenic", Qt::CaseInsensitive) ||
+        path.endsWith(".cpdf",    Qt::CaseInsensitive)) {
+        QMessageBox::information(this, tr("Fichier chiffré"),
+            tr("Ce fichier est un fichier chiffré.\n"
                "Utilisez « Fichier → Déchiffrer un fichier » pour le déchiffrer."));
         return;
     }
@@ -886,21 +889,19 @@ void MainWindow::showAbout()
 {
     QMessageBox::about(this, tr("À propos de CryptoPad"),
         tr("<h2>CryptoPad %1</h2>"
-           "<p>Éditeur de texte riche avec chiffrement triple couche intégré.</p>"
+           "<p>Éditeur de texte riche avec chiffrement intégré via Arsenic.</p>"
            "<hr>"
-           "<p><b>Documents éditeur (.cpad) — propre à CryptoPad</b><br>"
-           "AES-256/SIV → Serpent-256/GCM → ChaCha20/Poly1305<br>"
-           "Séparation KEK/DEK · Argon2id (64 Mio · 3 passes · par. 4)<br>"
-           "Nonces aléatoires · HMAC-SHA256 global<br>"
-           "<i>Non lisible par Arsenic (magic <code>CPAD</code>, contenu HTML).</i></p>"
-           "<p><b>Chiffrement de fichiers (.cpdf) — interopérable avec Arsenic</b><br>"
-           "Format binaire octet-pour-octet identique à Arsenic.<br>"
-           "Découpage en blocs de 1 Mio · séparation KEK/DEK · HMAC-SHA256 global.<br>"
-           "<i>Un fichier .cpdf chiffré par CryptoPad peut être déchiffré par Arsenic,<br>"
+           "<p><b>Documents éditeur (.cpad) — interopérable avec Arsenic</b><br>"
+           "Chiffrement Arsenic V1 : Deoxys-II-256 (en-tête) · XChaCha20-Poly1305 (payload)<br>"
+           "Argon2id · sel aléatoire · authenticated encryption<br>"
+           "<i>Les fichiers .cpad peuvent être déchiffrés par Arsenic et vice versa.</i></p>"
+           "<p><b>Chiffrement de fichiers (.cpdf / .arsenic) — interopérable avec Arsenic</b><br>"
+           "Même format Arsenic V1 — interopérabilité totale avec l'application Arsenic.<br>"
+           "<i>Un fichier chiffré par CryptoPad peut être déchiffré par Arsenic,<br>"
            "et vice versa.</i></p>"
            "<hr>"
            "<p>Licence : GNU GPL v3 — "
-           "Cryptographie : <a href='https://botan.randombit.net'>Botan 3</a></p>")
+           "Cryptographie : <a href='https://github.com/Antidote1911/cryptyrust'>Arsenic (cryptyrust)</a></p>")
         .arg(QLatin1String(APP_VERSION)));
 }
 

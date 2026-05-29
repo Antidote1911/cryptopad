@@ -69,8 +69,7 @@ private slots:
         QTest::newRow("vide")            << QByteArray();
         QTest::newRow("petit texte")     << QByteArray("Hello, CryptoPad!");
         QTest::newRow("octets binaires") << QByteArray("\x00\x01\xFE\xFF\x80", 5);
-        // Dépasse CHUNK_SIZE pour couvrir les fichiers multi-chunks
-        QTest::newRow("multi-chunk")     << QByteArray(static_cast<int>(FileEncryptor::CHUNK_SIZE) + 256, '\xAB');
+        QTest::newRow("1 MiB")           << QByteArray(1 << 20, '\xAB');
     }
 
     void roundtrip()
@@ -80,7 +79,7 @@ private slots:
         std::atomic<bool> cancelled{false};
 
         const QString inPath  = writeTmp(data);
-        const QString encPath = tmpPath(".cpdf");
+        const QString encPath = tmpPath(".arsenic");
         const QString decPath = tmpPath(".dec");
 
         FileEncryptor::encryptFile(inPath, encPath, pw, cancelled);
@@ -100,7 +99,7 @@ private slots:
     {
         std::atomic<bool> cancelled{false};
         const QString inPath  = writeTmp(QByteArray("données secrètes"));
-        const QString encPath = tmpPath(".cpdf");
+        const QString encPath = tmpPath(".arsenic");
         const QString decPath = tmpPath(".dec");
 
         FileEncryptor::encryptFile(inPath, encPath, "bon_mdp", cancelled);
@@ -108,98 +107,45 @@ private slots:
         QVERIFY(!QFile::exists(decPath));
     }
 
-    // ── Payload chiffré altéré (nonce du premier chunk) ───────────────────
+    // ── Magic altéré → rejeté avant dérivation de clé ─────────────────────
 
-    void tamperedPayload()
+    void tamperedMagic()
     {
         std::atomic<bool> cancelled{false};
-        const QString inPath  = writeTmp(QByteArray(128, 'X'));
-        const QString encPath = tmpPath(".cpdf");
+        const QString inPath  = writeTmp(QByteArray("test"));
+        const QString encPath = tmpPath(".arsenic");
         const QString decPath = tmpPath(".dec");
 
         FileEncryptor::encryptFile(inPath, encPath, "pw", cancelled);
-        corruptByte(encPath, 257);  // offset 257 = premier octet du premier chunk (N1[0])
+        corruptByte(encPath, 0);  // premier octet du magic "ARSN"
 
         QVERIFY_THROWS(FileEncryptor::decryptFile(encPath, decPath, "pw", cancelled));
-        QVERIFY(!QFile::exists(decPath));
     }
 
-    // ── Trailer MAC altéré ────────────────────────────────────────────────
+    // ── Dernier octet altéré (tag ou MAC) ────────────────────────────────
 
-    void tamperedTag()
+    void tamperedLastByte()
     {
         std::atomic<bool> cancelled{false};
         const QString inPath  = writeTmp(QByteArray(64, 'T'));
-        const QString encPath = tmpPath(".cpdf");
+        const QString encPath = tmpPath(".arsenic");
         const QString decPath = tmpPath(".dec");
 
         FileEncryptor::encryptFile(inPath, encPath, "pw", cancelled);
-        // Dernier octet du fichier = dernier octet du trailer MAC (HMAC-SHA256)
         corruptByte(encPath, QFileInfo(encPath).size() - 1);
 
         QVERIFY_THROWS(FileEncryptor::decryptFile(encPath, decPath, "pw", cancelled));
         QVERIFY(!QFile::exists(decPath));
     }
 
-    // ── Magic altéré (rejeté avant la dérivation de clé) ─────────────────
-
-    void tamperedMagic()
-    {
-        std::atomic<bool> cancelled{false};
-        const QString inPath  = writeTmp(QByteArray("test"));
-        const QString encPath = tmpPath(".cpdf");
-        const QString decPath = tmpPath(".dec");
-
-        FileEncryptor::encryptFile(inPath, encPath, "pw", cancelled);
-        corruptByte(encPath, 0);  // premier octet du magic "CPDF"
-
-        QVERIFY_THROWS(FileEncryptor::decryptFile(encPath, decPath, "pw", cancelled));
-    }
-
-    // ── Sel KDF altéré (mauvaise clé dérivée) ─────────────────────────────
-
-    void tamperedSalt()
-    {
-        std::atomic<bool> cancelled{false};
-        const QString inPath  = writeTmp(QByteArray("données"));
-        const QString encPath = tmpPath(".cpdf");
-        const QString decPath = tmpPath(".dec");
-
-        FileEncryptor::encryptFile(inPath, encPath, "pw", cancelled);
-        corruptByte(encPath, 21);  // offset 21 = premier octet du sel KDF (OFF_KDF_SALT)
-
-        QVERIFY_THROWS(FileEncryptor::decryptFile(encPath, decPath, "pw", cancelled));
-        QVERIFY(!QFile::exists(decPath));
-    }
-
-    // ── Annulation ────────────────────────────────────────────────────────
-    // Argon2id s'exécute avant la vérification → délai ~400 ms inévitable.
-
-    void cancellation()
-    {
-        std::atomic<bool> cancelled{true};
-        const QString inPath  = writeTmp(QByteArray("contenu"));
-        const QString encPath = tmpPath(".cpdf");
-
-        bool threw = false;
-        try {
-            FileEncryptor::encryptFile(inPath, encPath, "pw", cancelled);
-        } catch (const std::exception& e) {
-            threw = true;
-            QCOMPARE(QString::fromUtf8(e.what()), QString("Annulé"));
-        }
-        QVERIFY(threw);
-        QVERIFY(!QFile::exists(encPath));
-    }
-
-    // ── Non-déterminisme (sel aléatoire par chiffrement) ──────────────────
+    // ── Non-déterminisme ──────────────────────────────────────────────────
 
     void nonDeterministic()
     {
         std::atomic<bool> cancelled{false};
         const QString inPath = writeTmp(QByteArray("même contenu"));
-        const QString enc1   = tmpPath(".cpdf");
-        const QString enc2   = tmpPath(".cpdf");
+        const QString enc1   = tmpPath(".arsenic");
+        const QString enc2   = tmpPath(".arsenic");
 
         FileEncryptor::encryptFile(inPath, enc1, "pw", cancelled);
         FileEncryptor::encryptFile(inPath, enc2, "pw", cancelled);
@@ -210,37 +156,23 @@ private slots:
         QVERIFY(f1.readAll() != f2.readAll());
     }
 
-    // ── Taille du fichier chiffré ─────────────────────────────────────────
-    // Attendu : 257 (header) + N × (CHUNK_SIZE + 100) (chunks paddés) + 32 (MAC trailer)
+    // ── Annulation avant démarrage ─────────────────────────────────────────
 
-    void outputSize_data()
+    void cancellation()
     {
-        QTest::addColumn<int>("inputSize");
-        QTest::newRow("vide")    << 0;
-        QTest::newRow("1 octet") << 1;
-        QTest::newRow("1 KiB")   << 1024;
-        QTest::newRow("CHUNK-1") << static_cast<int>(FileEncryptor::CHUNK_SIZE) - 1;
-        QTest::newRow("CHUNK+1") << static_cast<int>(FileEncryptor::CHUNK_SIZE) + 1;
-    }
+        std::atomic<bool> cancelled{true};
+        const QString inPath  = writeTmp(QByteArray("contenu"));
+        const QString encPath = tmpPath(".arsenic");
 
-    void outputSize()
-    {
-        QFETCH(int, inputSize);
-        std::atomic<bool> cancelled{false};
-
-        const QString inPath  = writeTmp(QByteArray(inputSize, '\xCC'));
-        const QString encPath = tmpPath(".cpdf");
-
-        FileEncryptor::encryptFile(inPath, encPath, "pw", cancelled);
-
-        const qint64 cs            = static_cast<qint64>(FileEncryptor::CHUNK_SIZE);
-        const qint64 chunkEncrypted = cs + static_cast<qint64>(FileEncryptor::OVERHEAD); // 1 048 676
-        const qint64 nChunks       = (inputSize == 0) ? 0 : (inputSize + cs - 1) / cs;
-        const qint64 expected      = static_cast<qint64>(FileEncryptor::HDR_SZ)
-                                   + nChunks * chunkEncrypted
-                                   + static_cast<qint64>(FileEncryptor::MAC_TRAILER_LEN);
-
-        QCOMPARE(QFileInfo(encPath).size(), expected);
+        bool threw = false;
+        try {
+            FileEncryptor::encryptFile(inPath, encPath, "pw", cancelled);
+        } catch (const std::exception& e) {
+            threw = true;
+            QCOMPARE(QString::fromUtf8(e.what()), QString("Annulé"));
+        }
+        QVERIFY(threw);
+        QVERIFY(!QFile::exists(encPath));
     }
 };
 

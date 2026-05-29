@@ -3,14 +3,14 @@
 pkgname=cryptopad-git
 pkgver=r1.0000000
 pkgrel=1
-pkgdesc="Rich-text editor with triple-layer file encryption (git master)"
+pkgdesc="Rich-text editor with Arsenic V1 encryption, fully interoperable with the Arsenic application (git master)"
 arch=('x86_64')
 url="https://github.com/Antidote1911/cryptopad"
 license=('GPL3')
 provides=('cryptopad')
 conflicts=('cryptopad' 'cryptopad-appimage')
-depends=('qt6-base' 'botan')
-makedepends=('cmake' 'ninja' 'git')
+depends=('qt6-base')
+makedepends=('cmake' 'ninja' 'git' 'rust')
 source=("${pkgname}::git+https://github.com/Antidote1911/cryptopad.git")
 sha256sums=('SKIP')
 
